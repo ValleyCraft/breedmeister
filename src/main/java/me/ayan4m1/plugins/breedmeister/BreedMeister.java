@@ -1,170 +1,201 @@
-package me.ayan4m1.plugins.breedmeister;
+/*     */ package me.ayan4m1.plugins.breedmeister;
+/*     */ 
+/*     */ import java.util.Date;
+/*     */ import java.util.HashMap;
+/*     */ import java.util.List;
+/*     */ import java.util.logging.Logger;
 
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
+          import org.bukkit.Chunk;
+/*     */ import org.bukkit.Location;
+/*     */ import org.bukkit.Material;
+/*     */ import org.bukkit.Server;
+/*     */ import org.bukkit.World;
+/*     */ import org.bukkit.block.Block;
+/*     */ import org.bukkit.block.Dispenser;
+import org.bukkit.configuration.file.YamlConfiguration;
+/*     */ import org.bukkit.entity.Animals;
+/*     */ import org.bukkit.entity.Entity;
+/*     */ import org.bukkit.entity.EntityType;
+/*     */ import org.bukkit.entity.LivingEntity;
+/*     */ import org.bukkit.event.EventHandler;
+/*     */ import org.bukkit.event.Listener;
+/*     */ import org.bukkit.event.block.BlockDispenseEvent;
+/*     */ import org.bukkit.event.entity.EntityDeathEvent;
+/*     */ import org.bukkit.inventory.Inventory;
+/*     */ import org.bukkit.inventory.ItemStack;
+/*     */ import org.bukkit.plugin.PluginManager;
+/*     */ import org.bukkit.plugin.java.JavaPlugin;
+/*     */ 
+/*     */ public class BreedMeister extends JavaPlugin
+/*     */   implements Listener
+/*     */ {
+/*  23 */   private HashMap<Integer, Long> breedTimes = new HashMap();
+/*     */ 
+/*  26 */   //private Integer maxDistance = Integer.valueOf(5);
+               
 
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.block.Block;
-import org.bukkit.block.Dispenser;
-import org.bukkit.entity.Animals;
-import org.bukkit.entity.Entity;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
-import org.bukkit.event.block.BlockDispenseEvent;
-import org.bukkit.event.entity.EntityDeathEvent;
-import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.plugin.java.JavaPlugin;
+//private Integer maxDistance = (BreedMeister.this.getConfig().getInt("maxdistance"));
+//private Integer breedDelay = (BreedMeister.this.getConfig().getInt("breedelay"));
+//private Integer spawnRadius = (BreedMeister.this.getConfig().getInt("spawnradius"));
 
-public class BreedMeister extends JavaPlugin implements Listener {
-	//Map of entity ids to timestamps representing when they may next breed
-	private HashMap<Integer, Long> breedTimes = new HashMap<Integer, Long>();
+/*  29 */   //private Integer breedDelay = Integer.valueOf(5);
+            
 
-	//Maximum distance (in blocks) from dispenser to animal
-	private Integer maxDistance = 5;
+            //private Integer spawnRadius = Integer.valueOf(5);
 
-	//Per-animal delay between breeding in minutes
-	private Integer breedDelay = 5;
 
-	//Radius to search (in blocks) for an empty block near animals when spawning baby
-	private Integer spawnRadius = 5;
+/*     */   public void onEnable() {
+/*  35 */     getServer().getPluginManager().registerEvents(this, this);
+              Config c = new Config(this);
+/*     */   }
+/*     */ 
+/*     */   public void onDisable() {
+/*  39 */     this.breedTimes.clear();
+/*     */   }
+/*     */ 
+/*     */   @EventHandler
+/*     */   public void onEntityDeath(EntityDeathEvent event)
+/*     */   {
+/*  45 */     Integer entityId = Integer.valueOf(event.getEntity().getEntityId());
+/*  46 */     if (this.breedTimes.containsKey(entityId))
+/*  47 */       this.breedTimes.remove(entityId);
+/*     */   }
+/*     */ 
+/*     */   @EventHandler
+/*     */   public void onBlockDispense(BlockDispenseEvent event)
+/*     */   {
+	          
+/*  53 */     Block block = event.getBlock();
+/*     */ 
+/*  56 */     if ((block.getType() != Material.DISPENSER) || (event.getItem().getType() != Material.WHEAT)) {
+/*  57 */       return;
+/*     */     }
+/*     */ 
+/*  60 */     List entities = block.getWorld().getEntities();
 
-	public void onEnable() {
-		getServer().getPluginManager().registerEvents(this, this);
-	}
+/*  63 */     Animals animalOne = findValidAnimal(entities, block.getLocation(), null);
+/*  64 */     if (animalOne == null) {
+/*  65 */       event.setCancelled(true);
+/*  66 */       return;
+/*     */     }
+/*     */ 
+/*  69 */     Animals animalTwo = findValidAnimal(entities, block.getLocation(), animalOne);
+/*  70 */     if (animalTwo == null) {
+/*  71 */       event.setCancelled(true);
+/*  72 */       return;
+/*     */     }
+ 
+             Integer total = TotalAnimals(entities, block.getLocation());
+             String oof = Integer.toString(total);
+               getLogger().info("DEBUG: Total Animals: " + oof);
+             
+/*     */ 
+/*  76 */     Location newLoc = getNearestFreeBlock(animalTwo.getLocation());
+/*  77 */     if (newLoc == null) {
+/*  78 */       getLogger().warning("Tried to spawn baby, but couldn't find a free block!");
+/*  79 */       event.setCancelled(true);
+/*  80 */       return;
+/*     */     }
+              int maxmobs = (BreedMeister.this.getConfig().getInt("maxmobs"));          
+              String wee = Integer.toString(maxmobs);
+              if (total > maxmobs) {
+            	  getLogger().warning("Animals are greater than " + wee + " in this Chunk stopping.");
+            	  event.setCancelled(true);
+            	  return;
+              }
+/*  84 */     Animals newAnimal = (Animals)block.getWorld().spawnCreature(newLoc, animalTwo.getType());
+/*  85 */     newAnimal.setBaby();
+/*     */ 
+/*  88 */     //Long nextBreedTime = Long.valueOf(new Date().getTime() / 1000L + this.breedDelay.intValue() * 60);
+                Long nextBreedTime = Long.valueOf(new Date().getTime() / 1000L + (BreedMeister.this.getConfig().getInt("breedelay")) * 60);
+/*  89 */     this.breedTimes.put(Integer.valueOf(animalOne.getEntityId()), nextBreedTime);
+/*  90 */     this.breedTimes.put(Integer.valueOf(animalTwo.getEntityId()), nextBreedTime);
+/*     */ 
+/*  93 */     Inventory dispInv = ((Dispenser)event.getBlock().getState()).getInventory();
+              int wheat2 = dispInv.getSize();
+/*  94 */     ItemStack wheat = dispInv.getItem(dispInv.first(Material.WHEAT));
+              int yow = wheat.getAmount();
+              String okok = Integer.toString(yow);
+              getLogger().info("DEBUG: Wheat Left in stack: " + okok + "Also: " + wheat2);
+/*  95 */     if (wheat.getAmount() > 1) {
+/*  96 */       wheat.setAmount(wheat.getAmount() - 1);
+                getLogger().info("DEBUG: Decreased wheat");
+/*     */     }
+                else {
+                //wheat.setAmount(-1);
+/*  98 */       dispInv.remove(wheat);
+                getLogger().info("DEBUG: Removed wheat");
+/*     */     }
+/* 100 */     event.setCancelled(true);
+/*     */   }
+/*     */ 
+/*     */   private Location getNearestFreeBlock(Location animalLoc)
+/*     */   {
+/* 109 */     if (animalLoc.getBlock().isEmpty()) {
+/* 110 */       return animalLoc;
+/*     */     }
+/*     */ 
+/* 114 */     //for (int x = 0; x <= this.spawnRadius.intValue() * 2; x++) {
+/* 115 */       for (int x = 0; x <= (BreedMeister.this.getConfig().getInt("spawnradius")) * 2; x++ ) {
+                  for (int y = 0; y <= (BreedMeister.this.getConfig().getInt("spawnradius")) * 2; y++) {
+/* 116 */         for (int z = 0; z <= (BreedMeister.this.getConfig().getInt("spawnradius")) * 2; z++) {
+/* 117 */           Location testLoc = animalLoc.add(x % (BreedMeister.this.getConfig().getInt("spawnradius")) * (x < (BreedMeister.this.getConfig().getInt("spawnradius")) ? -1 : 0), y % (BreedMeister.this.getConfig().getInt("spawnradius")) * (y < (BreedMeister.this.getConfig().getInt("spawnradius")) ? -1 : 0), z % (BreedMeister.this.getConfig().getInt("spawnradius")) * (z < (BreedMeister.this.getConfig().getInt("spawnradius")) ? -1 : 0));
+/*     */ 
+/* 121 */           if (testLoc.getBlock().isEmpty()) {
+/* 122 */             return testLoc;
+/*     */           }
+/*     */         }
+/*     */       }
+/*     */     }
+/*     */ 
+/* 128 */     return null;
+/*     */   }
+/*     */ 
+/*     */   private Animals findValidAnimal(List<Entity> entities, Location dispenserLoc, Animals exceptThis)
+/*     */   {
+/* 139 */     for (Entity e : entities)
+/*     */     {
+/* 141 */       if (((e instanceof Animals)) && (((Animals)e).canBreed()) && (!e.isDead()) && 
+/* 146 */         //(dispenserLoc.distance(e.getLocation()) <= this.maxDistance.intValue()))
+		            (dispenserLoc.distance(e.getLocation()) <= (BreedMeister.this.getConfig().getInt("maxdistance"))))
+/*     */       {
+/* 151 */         if (this.breedTimes.containsKey(Integer.valueOf(e.getEntityId()))) {
+/* 152 */           if (((Long)this.breedTimes.get(Integer.valueOf(e.getEntityId()))).longValue() <= new Date().getTime() / 1000L)
+/*     */           {
+/* 155 */             this.breedTimes.remove(Integer.valueOf(e.getEntityId()));
+/*     */           }
+/*     */ 
+/*     */         }
+/* 160 */         else if ((exceptThis == null) || (!e.getType().equals(exceptThis.getType())) || (exceptThis.getEntityId() != e.getEntityId()))
+/*     */         {
+/* 166 */           return (Animals)e;
+/*     */         }
+/*     */       }
+/*     */     }
+/* 168 */     return null;
+/*     */   }
+/*     */
 
-	public void onDisable() {
-		this.breedTimes.clear();
-	}
-
-	@EventHandler
-	public void onEntityDeath(EntityDeathEvent event) {
-		//Remove entity from breedTimes to prevent memory leaks
-		Integer entityId = event.getEntity().getEntityId();
-		if (this.breedTimes.containsKey(entityId)) {
-			this.breedTimes.remove(entityId);
-		}
-	}
-
-	@EventHandler
-	public void onBlockDispense(BlockDispenseEvent event) {
-		Block block = event.getBlock();
-
-		//Only continue if wheat is being dropped from a dispenser
-		if (block.getType() != Material.DISPENSER || event.getItem().getType() != Material.WHEAT) {
-			return;
-		}
-
-		List<Entity> entities = block.getWorld().getEntities();
-
-		//Search for two valid and distinct animals
-		Animals animalOne = this.findValidAnimal(entities, block.getLocation(), null);
-		if (animalOne == null) {
-			event.setCancelled(true);
-			return;
-		}
-
-		Animals animalTwo = this.findValidAnimal(entities, block.getLocation(), animalOne);
-		if (animalTwo == null) {
-			event.setCancelled(true);
-			return;
-		}
-
-		//Find an empty location to spawn the baby, return if none is found
-		Location newLoc = this.getNearestFreeBlock(animalTwo.getLocation());
-		if (newLoc == null) {
-			this.getLogger().warning("Tried to spawn baby, but couldn't find a free block!");
-			event.setCancelled(true);
-			return;
-		}
-
-		//Spawn the baby if a valid location was found
-		Animals newAnimal = (Animals)block.getWorld().spawnCreature(newLoc, animalTwo.getType());
-		newAnimal.setBaby();
-
-		//Add the animals to the bred list
-		Long nextBreedTime = (new Date().getTime() / 1000) + (this.breedDelay * 60);
-		this.breedTimes.put(animalOne.getEntityId(), nextBreedTime);
-		this.breedTimes.put(animalTwo.getEntityId(), nextBreedTime);
-
-		//Consume one unit of wheat
-		Inventory dispInv = ((Dispenser)event.getBlock().getState()).getInventory();
-		ItemStack wheat = dispInv.getItem(dispInv.first(Material.WHEAT));
-		if (wheat.getAmount() > 1) {
-			wheat.setAmount(wheat.getAmount() - 1);
-		} else {
-			dispInv.remove(wheat);
-		}
-		event.setCancelled(true);
-	}
-
-	/**
-	 * Get the empty block nearest to the provided location 
-	 * @param animalLoc A location to search nearby
-	 * @return A Location or null if no empty blocks are found in the search radius
+public Integer TotalAnimals(List<Entity> entities, Location dispenserLoc)
+{
+	int entcount = 0;
+	/*
+	 * Checks and applies entity cap using individual cap limits
 	 */
-	private Location getNearestFreeBlock(Location animalLoc) {
-		if (animalLoc.getBlock().isEmpty()) {
-			return animalLoc;
-		}
+	for (Entity entt : entities)
+	{
+		if (((entt instanceof Animals)) && (!entt.isDead())  && 
+        (dispenserLoc.distance(entt.getLocation()) <= (BreedMeister.this.getConfig().getInt("maxdistance"))))
+		{
 
-		//Check each block in our radius starting from the center
-		for(int x = 0; x <= (this.spawnRadius * 2); x++) {
-			for(int y = 0; y <= (this.spawnRadius * 2); y++) {
-				for(int z = 0; z <= (this.spawnRadius * 2); z++) {
-					Location testLoc = animalLoc.add(
-							(x % this.spawnRadius) * ((x < this.spawnRadius) ? -1 : 0),
-							(y % this.spawnRadius) * ((y < this.spawnRadius) ? -1 : 0),
-							(z % this.spawnRadius) * ((z < this.spawnRadius) ? -1 : 0));
-					if (testLoc.getBlock().isEmpty()) {
-						return testLoc;
-					}
-				}
-			}
-		}
-
-		return null;
+			entcount ++;
 	}
-
-	/**
-	 * Search the entity list for an animal which is suitable for breeding
-	 * @param entities A list of the entities to search
-	 * @param dispenserLoc The Location of the dispenser being activated
-	 * @param exceptThis This entity will be skipped
-	 * @return An instance of Animals or null if no valid matches are found
-	 */
-	private Animals findValidAnimal(List<Entity> entities, Location dispenserLoc, Animals exceptThis) {
-		for(Entity e : entities) {
-			//Ensure entity is a living, adult animal
-			if (!(e instanceof Animals && ((Animals)e).canBreed()) || e.isDead()) {
-				continue;
-			}
-
-			//Ensure animal is within maxDistance blocks from the dispenser
-			if (dispenserLoc.distance(e.getLocation()) > this.maxDistance) {
-				continue;
-			}
-
-			//Ensure the animal can breed
-			if (this.breedTimes.containsKey(e.getEntityId())) {
-				if (this.breedTimes.get(e.getEntityId()) > (new Date().getTime() / 1000)) {
-					continue;
-				} else {
-					this.breedTimes.remove(e.getEntityId());
-				}
-			}
-
-			//Ensure the animal is not one we have already found
-			if (exceptThis != null
-					&& e.getType().equals(exceptThis.getType())
-					&& exceptThis.getEntityId() != e.getEntityId()) {
-				continue;
-			}
-
-			return (Animals)e;
-		}
-		return null;
 	}
+	return entcount;
 }
+}
+
+/* Location:           C:\Users\Nicholas\Desktop\bukkit\plugins\BreedMeister-0.2.jar
+ * Qualified Name:     me.ayan4m1.plugins.breedmeister.BreedMeister
+ * JD-Core Version:    0.6.2
+ */
